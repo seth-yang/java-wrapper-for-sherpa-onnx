@@ -33,7 +33,7 @@ public class CoquiModel extends AbstractMappedTtsModel {
                 OfflineTtsModelConfig.builder()
                         .setVits(vitsModelConfig)
                         .setNumThreads(1)
-                        .setDebug(true)
+                        .setDebug(false)
                         .build();
 
         OfflineTtsConfig config = OfflineTtsConfig.builder().setModel(modelConfig).build();

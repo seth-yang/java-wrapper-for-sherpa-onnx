@@ -20,6 +20,8 @@ public interface ITTSListener {
      */
     default void idle () {}
 
+    default void interrupted (Object target) {}
+
     /**
      * 但一段合成的语音文件被存盘后触发
      * @param target 原始文本，或一个 wav/pcm 文件，或者一段 wav/pcm 输入流
@@ -27,5 +29,5 @@ public interface ITTSListener {
      */
     default void voiceSaved (Object target, Path path) {}
 
-    default void handleException (Object target, Exception ex) {}
+    default void handleException (Object target, Throwable ex) {}
 }

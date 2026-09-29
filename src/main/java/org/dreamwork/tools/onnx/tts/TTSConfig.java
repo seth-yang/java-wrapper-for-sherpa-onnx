@@ -10,8 +10,11 @@ import java.io.OutputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.Collection;
+import java.util.Collections;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.stream.Collectors;
 
 public class TTSConfig {
     public static final int MODE_REALTIME = 0x01;
@@ -21,12 +24,12 @@ public class TTSConfig {
     TtsModel model;
     String root;
 
-    transient int sid, sampleRate = 24000;
-
+    volatile int sid, sampleRate = 24000;
+    volatile float speed = 1.0f;
     volatile long timeout = 10_000L; // 10s
     volatile String dir;
 
-    volatile Path target;
+    volatile ITtsModel trainedModel;
     volatile OutputStream stream;
     volatile OfflineTts tts;
     AtomicBoolean initialed = new AtomicBoolean (false);
@@ -82,6 +85,11 @@ public class TTSConfig {
         return this;
     }
 
+    public TTSConfig speed (float speed) {
+        this.speed = speed;
+        return this;
+    }
+
     /**
      * 设置进入 Idle 状态的超时时间
      * @param amount 时间
@@ -91,7 +99,7 @@ public class TTSConfig {
     public TTSConfig timeout (int amount, TimeUnit unit) {
         if (amount < 0) {
             logger.warn ("wrong time amount: {} of {}, use the default value: 30s.", amount, unit);
-            timeout = 500L;
+            timeout = 10_000L;
         } else {
             timeout = unit.toMillis (amount);
         }
@@ -196,6 +204,44 @@ public class TTSConfig {
         return this;
     }
 
+    public int sampleRate () {
+        return sampleRate;
+    }
+
+    /**
+     * 获取当前模型允许的音色
+     * @return 当前模型允许的音色
+     */
+    public Collection<VoiceRole> availableVoiceRoles () {
+        if (model == null) {
+            return Collections.emptyList ();
+        }
+
+        createModel ();
+        return trainedModel.getAvailableVoices ();
+    }
+
+    public Collection<VoiceRole> availableVoiceRolesByGender (String gender) {
+        Collection<VoiceRole> c = availableVoiceRoles ();
+        return c.stream ()
+                .filter (r -> r.gender.equals (gender))
+                .collect(Collectors.toList ());
+    }
+
+    public Collection<VoiceRole> availableVoiceRolesByLang (String lang) {
+        Collection<VoiceRole> c = availableVoiceRoles ();
+        return c.stream ()
+                .filter (r -> r.lang.equals (lang))
+                .collect(Collectors.toSet());
+    }
+
+    public Collection<VoiceRole> availableVoiceRoles (String gender, String lang) {
+        Collection<VoiceRole> c = availableVoiceRoles ();
+        return c.stream ()
+                .filter (r -> r.gender.equals (gender) && r.lang.equals (lang))
+                .collect(Collectors.toSet());
+    }
+
     void check () {
         if ((mode & MODE_SAVE) != 0) {
             if (dir == null || dir.trim ().isEmpty ()) {
@@ -234,6 +280,9 @@ public class TTSConfig {
     OfflineTts build () {
         if (initialed.compareAndSet (false, true)) {
             if (model != null) {
+                createModel ();
+                tts = ((AbstractMappedTtsModel) trainedModel).createTTS ();
+/*
                 switch (model) {
                     case Coqui:
                         tts = new CoquiModel (root).createTTS ();
@@ -255,8 +304,36 @@ public class TTSConfig {
                         tts = new PiperModel (root).createTTS ();
                         break;
                 }
+*/
             }
         }
         return tts;
+    }
+
+    private synchronized void createModel () {
+        switch (model) {
+            case Coqui:
+                trainedModel = new CoquiModel (root);
+                break;
+
+            case Kitten:
+                trainedModel = new KittenModel (root);
+                break;
+
+            case Kokoro:
+                trainedModel = new KokoroModel (root);
+                break;
+
+            case Matcha:
+                trainedModel = new MatchaModel (root);
+                break;
+
+            case Piper:
+                trainedModel = new PiperModel (root);
+                break;
+
+            default:
+                throw new IllegalArgumentException ("unsupported model: " + model);
+        }
     }
 }

@@ -19,25 +19,25 @@ public class PiperModel extends AbstractMappedTtsModel {
 
     @Override
     protected OfflineTts generateTTS () {
-        String model   = root + "/vits-piper-en_GB-cori-medium/en_GB-cori-medium.onnx";
-        String tokens  = root + "/vits-piper-en_GB-cori-medium/tokens.txt";
+        String model = root + "/vits-piper-en_GB-cori-medium/en_GB-cori-medium.onnx";
+        String tokens = root + "/vits-piper-en_GB-cori-medium/tokens.txt";
         String dataDir = root + "/vits-piper-en_GB-cori-medium/espeak-ng-data";
 
         OfflineTtsVitsModelConfig vitsModelConfig =
-                OfflineTtsVitsModelConfig.builder()
-                        .setModel(model)
-                        .setTokens(tokens)
-                        .setDataDir(dataDir)
-                        .build();
+                OfflineTtsVitsModelConfig.builder ()
+                        .setModel (model)
+                        .setTokens (tokens)
+                        .setDataDir (dataDir)
+                        .build ();
 
         OfflineTtsModelConfig modelConfig =
-                OfflineTtsModelConfig.builder()
-                        .setVits(vitsModelConfig)
-                        .setNumThreads(1)
-                        .setDebug(true)
-                        .build();
+                OfflineTtsModelConfig.builder ()
+                        .setVits (vitsModelConfig)
+                        .setNumThreads (1)
+                        .setDebug (false)
+                        .build ();
 
-        OfflineTtsConfig config = OfflineTtsConfig.builder().setModel(modelConfig).build();
+        OfflineTtsConfig config = OfflineTtsConfig.builder ().setModel (modelConfig).build ();
         return new OfflineTts (config);
     }
 }

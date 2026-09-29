@@ -1,6 +1,5 @@
 package org.dreamwork.tools.onnx.tts.models;
 
-import com.k2fsa.sherpa.onnx.OfflineTts;
 import org.dreamwork.tools.onnx.tts.VoiceRole;
 
 import java.util.ArrayList;
@@ -10,8 +9,6 @@ import java.util.List;
 
 public interface ITtsModel {
     Collection<VoiceRole> getAvailableVoices ();
-
-    OfflineTts createTTS ();
 
     default List<VoiceRole> byGender (String gender) {
         Collection<VoiceRole> c = getAvailableVoices ();

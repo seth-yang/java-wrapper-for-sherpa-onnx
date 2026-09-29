@@ -11,4 +11,10 @@ public final class VoiceRole {
         this.gender = gender;
         this.displayName = displayName;
     }
+
+    @Override
+    public String toString () {
+        return "VoiceRole {id: " + sid + ", lang: " + lang + ", gender: " +
+                gender + ", name: " + name + ", displayName: " + displayName + "}";
+    }
 }

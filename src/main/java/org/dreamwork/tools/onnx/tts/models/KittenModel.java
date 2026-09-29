@@ -35,7 +35,7 @@ public class KittenModel extends AbstractMappedTtsModel {
                 OfflineTtsModelConfig.builder ()
                         .setKitten (kittenModelConfig)
                         .setNumThreads (2)
-                        .setDebug (true)
+                        .setDebug (false)
                         .build ();
 
         OfflineTtsConfig config = OfflineTtsConfig.builder ().setModel (modelConfig).build ();

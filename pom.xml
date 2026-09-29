@@ -21,9 +21,16 @@
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     </properties>
 
+    <repositories>
+        <repository>
+            <id>jitpack</id>
+            <url>https://jitpack.io</url>
+        </repository>
+    </repositories>
+
     <scm>
         <connection>scm:git:https://github.com/seth-yang/java-wrapper-for-sherpa-onnx</connection>
-        <developerConnection>scm:git:git@hithub.com:seth-yang/ok-http-wrapper</developerConnection>
+        <developerConnection>scm:git:git@github.com:seth-yang/ok-http-wrapper</developerConnection>
         <url>https://github.com/seth-yang/java-wrapper-for-sherpa-onnx</url>
         <tag>HEAD</tag>
     </scm>
@@ -41,14 +48,9 @@
             </exclusions>
         </dependency>
         <dependency>
-            <groupId>com.k2fsa.sherpa.onnx</groupId>
+            <groupId>com.github.k2-fsa.sherpa-onnx</groupId>
             <artifactId>sherpa-onnx-jvm</artifactId>
-            <version>1.13.8</version>
-        </dependency>
-        <dependency>
-            <groupId>com.fasterxml.jackson.core</groupId>
-            <artifactId>jackson-databind</artifactId>
-            <version>2.22.1</version>
+            <version>v1.13.8</version>
         </dependency>
     </dependencies>
 </project>
