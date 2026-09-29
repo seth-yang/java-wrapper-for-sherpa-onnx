@@ -55,6 +55,12 @@ public abstract class AbstractMappedTtsModel extends AbstractTtsModel {
                                 String[] arr = p.trim ().split (":");
                                 if (arr.length >= 2) {
                                     String key = arr[0].trim (), value = arr[1].trim ();
+                                    if (value.charAt (0) == '"') {
+                                        value = value.substring (1);
+                                    }
+                                    if (value.charAt (value.length () - 1) == '"') {
+                                        value = value.substring (0, value.length () - 1);
+                                    }
                                     switch (key) {
                                         case "\"sid\"":
                                             sid = Integer.parseInt (value);
