@@ -211,7 +211,7 @@ public class ForwardExample {
                 .timeout (500, TimeUnit.MILLISECONDS)
                 .model (TtsModel.Matcha) // select a model
                 // point to the model root
-                .modelRoot ("F:\\temp\\sherpa-onnx\\models\\matcha-icefall-zh-baker")
+                .modelRoot ("../models/matcha-icefall-zh-baker")
                 .enableForwardMode ()
                 .forward (out);
         tts.setListener (new ITTSListener () {
