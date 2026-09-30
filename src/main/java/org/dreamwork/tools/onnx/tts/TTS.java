@@ -3,11 +3,16 @@ package org.dreamwork.tools.onnx.tts;
 import com.k2fsa.sherpa.onnx.GeneratedAudio;
 import com.k2fsa.sherpa.onnx.OfflineTts;
 import org.dreamwork.tools.onnx.tts.util.SamplesWrapper;
+import org.dreamwork.tools.onnx.tts.util.WaveStreamAdapter;
 import org.dreamwork.util.IDisposable;
 import org.dreamwork.util.StringUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import javax.sound.sampled.AudioFormat;
+import javax.sound.sampled.AudioInputStream;
+import javax.sound.sampled.AudioSystem;
+import java.io.BufferedInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.Serializable;
@@ -29,6 +34,8 @@ public class TTS implements IDisposable, AutoCloseable {
     private volatile PcmRealtimePlayer player;
     /** TTS 内部的运行状态指示器 */
     private volatile boolean running = true;
+    /** 重新采样器 */
+    private volatile WaveStreamAdapter adapter;
 
     /** 追踪内部线程的句柄 */
     private final Future<?>[] futures = new Future[2];
@@ -187,7 +194,7 @@ public class TTS implements IDisposable, AutoCloseable {
      */
     public String play (InputStream in) {
         checkState ();
-        TTSEntry entry = new TTSEntry (StringUtil.uuid (), TTSEntryType.InputStream, null);
+        TTSEntry entry = new TTSEntry (StringUtil.uuid (), TTSEntryType.InputStream, in);
         if (queue.offer (entry)) {
             map.put (entry.uuid, entry);
             return entry.uuid;
@@ -264,7 +271,12 @@ public class TTS implements IDisposable, AutoCloseable {
                         break;
 
                     case WaveFile:
+                        processWaveFile (entry);
+                        break;
 
+                    case InputStream:
+                        processInputStream (entry);
+                        break;
                 }
             }
         }
@@ -281,31 +293,8 @@ public class TTS implements IDisposable, AutoCloseable {
         }
         config.check ();
 
-        if (tts == null) {
-            synchronized (this) {
-                if (tts == null) {
-                    // sherpa-onnx 尚未初始化，在这里进行初始化
-                    try {
-                        tts = config.build ();
-                    } catch (Throwable ex) {
-                        logger.warn (ex.getMessage (), ex);
-                        ex.printStackTrace (System.err);
-                    }
-                    if (logger.isDebugEnabled ()) {
-                        int speakers = tts.getNumSpeakers ();
-                        logger.debug ("there's {} speakers in model {}", speakers, config.model);
-                    }
-
-                    if (player == null) {
-                        // 初始化 pcm 实时播放器
-                        player = new PcmRealtimePlayer (config ().sampleRate, config.timeout);
-                        player.setListener (createCpmRealtimeListener ());
-                        player.setEventLoop (eventLoop);
-                        player.start ();
-                    }
-                }
-            }
-        }
+        initialOfflineTTS ();
+        initialPcmPlayer ();
 
         // 尝试发起一个合成开始事件
         raiseEvent (entry, SamplesWrapper.TRIGGER_START);
@@ -332,21 +321,7 @@ public class TTS implements IDisposable, AutoCloseable {
                     if (voice.length > 0) {
                         // 将 sherpa-onnx 的 float[] 转成 pcm 的 byte[]
                         byte[] pcm = floatToS16LE (voice);
-                        if ((config.mode & MODE_REALTIME) != 0) {
-                            // 喂给播放器
-                            player.play (new SamplesWrapper (entry.uuid, pcm));
-                        }
-
-                        if ((config.mode & MODE_FORWARDING) != 0) {
-                            // 开启了流转发模式
-                            try {
-                                // 喂给转发流
-                                config.output.write (pcm);
-                                config.output.flush ();
-                            } catch (IOException ex) {
-                                logger.warn (ex.getMessage (), ex);
-                            }
-                        }
+                        playOrForward (entry, pcm);
                     }
                 } catch (Throwable ex) {
                     logger.error (ex.getMessage (), ex);
@@ -355,6 +330,39 @@ public class TTS implements IDisposable, AutoCloseable {
         }
         // 尝试发起一个合成结束事件
         raiseEvent (entry, SamplesWrapper.TRIGGER_END);
+    }
+
+    private void processWaveFile (TTSEntry entry) {
+        initialPcmPlayer ();
+        initialAudioAdapter ();
+
+
+        raiseEvent (entry, SamplesWrapper.TRIGGER_START);
+        Path path = (Path) entry.target;
+        try {
+            adapter.resample (path.toFile (), buff -> playOrForward (entry, buff));
+        } catch (Exception ex) {
+            logger.warn (ex.getMessage (), ex);
+        }
+        raiseEvent (entry, SamplesWrapper.TRIGGER_END);
+    }
+
+    private void processInputStream (TTSEntry entry) {
+        try (InputStream in = (InputStream) entry.target) {
+            InputStream alias = in;
+            if (!in.markSupported ()) {
+                alias = new BufferedInputStream (in, 8192);
+            }
+            AudioInputStream ais = AudioSystem.getAudioInputStream (alias);
+            AudioFormat format = ais.getFormat ();
+
+            initialPcmPlayer ();
+            initialAudioAdapter ();
+
+            adapter.resample (alias, buff -> playOrForward (entry, buff));
+        } catch (Exception ex) {
+            logger.warn (ex.getMessage (), ex);
+        }
     }
 
     public static byte[] floatToS16LE (float[] samples) {
@@ -376,7 +384,7 @@ public class TTS implements IDisposable, AutoCloseable {
             return;
         }
 
-        if ((config.mode & MODE_REALTIME) != 0) {
+        if ((config.mode & MODE_REALTIME) != 0 || entry.type != TTSEntryType.Text) {
             // 实时播放器模式，其事件应该由播放器发起
             player.play (new SamplesWrapper (entry.uuid, what));
         } else if (listener != null && eventLoop != null) {
@@ -427,6 +435,68 @@ public class TTS implements IDisposable, AutoCloseable {
                         logger.warn ("cannot raise an error event");
                     }
                 }
+            }
+        }
+    }
+
+    private void initialOfflineTTS () {
+        if (tts == null) {
+            synchronized (this) {
+                if (tts == null) {
+                    // sherpa-onnx 尚未初始化，在这里进行初始化
+                    try {
+                        tts = config.build ();
+                    } catch (Throwable ex) {
+                        logger.warn (ex.getMessage (), ex);
+                        ex.printStackTrace (System.err);
+                    }
+                    if (logger.isDebugEnabled ()) {
+                        int speakers = tts.getNumSpeakers ();
+                        logger.debug ("there's {} speakers in model {}", speakers, config.model);
+                    }
+                }
+            }
+        }
+    }
+
+    private void initialPcmPlayer () {
+        if (player == null) {
+            synchronized (this) {
+                if (player == null) {
+                    // 初始化 pcm 实时播放器
+                    player = new PcmRealtimePlayer (config ().sampleRate, config.timeout);
+                    player.setListener (createCpmRealtimeListener ());
+                    player.setEventLoop (eventLoop);
+                    player.start ();
+                }
+            }
+        }
+    }
+
+    private void initialAudioAdapter () {
+        if (adapter == null) {
+            synchronized (this) {
+                if (adapter == null) {
+                    adapter = new WaveStreamAdapter (player.getFormat ());
+                }
+            }
+        }
+    }
+
+    private void playOrForward (TTSEntry entry, byte[] pcm) {
+        if ((config.mode & MODE_REALTIME) != 0) {
+            // 喂给播放器
+            player.play (new SamplesWrapper (entry.uuid, pcm));
+        }
+
+        if ((config.mode & MODE_FORWARDING) != 0) {
+            // 开启了流转发模式
+            try {
+                // 喂给转发流
+                config.output.write (pcm);
+                config.output.flush ();
+            } catch (IOException ex) {
+                logger.warn (ex.getMessage (), ex);
             }
         }
     }

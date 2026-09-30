@@ -12,10 +12,10 @@ import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
 
 public class PcmRealtimePlayer {
-    private final int sampleRate;
     private final long timeout;
     private final Logger logger = LoggerFactory.getLogger (PcmRealtimePlayer.class);
     private final BlockingQueue<SamplesWrapper> queue = new ArrayBlockingQueue<> (1024);
+    private final AudioFormat format;
 
     // 0 - idle
     // 1 - playing
@@ -27,16 +27,24 @@ public class PcmRealtimePlayer {
     private volatile IPlayerListener listener;
     private volatile long timestamp = -1;
     private volatile TTSEventLoop eventLoop;
-    private volatile String playingId = null;
+
 
     public PcmRealtimePlayer (int sampleRate, long timeout) {
-        this.sampleRate = sampleRate;
-        this.timeout    = timeout;
+        this.timeout = timeout;
         if (logger.isTraceEnabled ()) {
             logger.trace ("pcm realtime player created.");
             logger.trace ("sample rate = {}", sampleRate);
             logger.trace ("timeout = {} ms.", timeout);
         }
+        format = new AudioFormat (
+                AudioFormat.Encoding.PCM_SIGNED,
+                sampleRate,
+                16,
+                1,            // channels
+                2,            // frameSize = 16bit/2byte * 1ch
+                sampleRate,   // frameRate
+                false         // little-endian
+        );
     }
 
     void setListener (IPlayerListener listener) {
@@ -47,19 +55,15 @@ public class PcmRealtimePlayer {
         this.eventLoop = loop;
     }
 
+    public AudioFormat getFormat () {
+        return format;
+    }
+
     public void start () {
-        AudioFormat fmt = new AudioFormat (
-                AudioFormat.Encoding.PCM_SIGNED,
-                sampleRate,
-                16,
-                1,            // channels
-                2,            // frameSize = 16bit/2byte * 1ch
-                sampleRate,   // frameRate
-                false         // little-endian
-        );
-        DataLine.Info info = new DataLine.Info (SourceDataLine.class, fmt);
+
+        DataLine.Info info = new DataLine.Info (SourceDataLine.class, format);
         if (!AudioSystem.isLineSupported (info)) {
-            throw new IllegalStateException ("SourceDataLine not supported: " + fmt);
+            throw new IllegalStateException ("SourceDataLine not supported: " + format);
         }
 
         ExecutorService executor = Executors.newFixedThreadPool (1);
@@ -71,7 +75,7 @@ public class PcmRealtimePlayer {
             }
             final int chunk = 4096;
             try (SourceDataLine line = (SourceDataLine) AudioSystem.getLine (info)) {
-                line.open (fmt);
+                line.open (format);
                 line.start ();
 
                 running = true;
